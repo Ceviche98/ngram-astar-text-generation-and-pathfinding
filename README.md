@@ -45,13 +45,13 @@ flowchart LR
         D --> E["Inverted Distance Matrix\nD(u,v) = (max C_sym + 1) - C_sym(u,v)"]
     end
 
-    subgraph Pathfinding ["3. Combinatorial Pathfinding (T6.1–T6.4)"]
-        D --> F["Multi-Start DFS + Fixed-Endpoint SA\n2-opt / 3-opt / Common-Neighbor Splice\n(Longest Path: 463–466 Nodes)"]
+    subgraph Pathfinding ["3. Combinatorial Pathfinding (T6.1-T6.4)"]
+        D --> F["Multi-Start DFS + Fixed-Endpoint SA\n2-opt / 3-opt / Common-Neighbor Splice\n(Longest Path: 463-466 Nodes)"]
         E --> G["Inverted-Cost SA Optimization\n(Max-Cost Simple Path: 1,132,655)"]
         D --> H["Prefix-Pruned Exact DFS\n(Optimal Quote: 27 Words / Cost 64,229)"]
     end
 
-    subgraph Generation ["4. Length-Normalised A* NLP (T6.5A–T6.5C)"]
+    subgraph Generation ["4. Length-Normalised A* NLP (T6.5A-T6.5C)"]
         C --> I["Dynamic N-Gram Backoff Cost\ng_avg(n) = G(n) / T"]
         D --> J["Hybrid Lookahead Heuristic h_avg(n)\nDirect Bigram + Reverse-BFS Hop Map"]
         I --> K["Length-Normalised A* Engine\nf_avg(n) = (1-w) g_avg(n) + w h_avg(n)"]
@@ -76,7 +76,7 @@ Given an input text corpus, the pipeline in [`src/graph_search_nlp/network.py`](
 
 ---
 
-## 3. Combinatorial Graph Pathfinding & Prefix-Pruned Quote Search (Tasks 6.1–6.4)
+## 3. Combinatorial Graph Pathfinding & Prefix-Pruned Quote Search (Tasks 6.1-6.4)
 
 All paths evaluated in [`src/graph_search_nlp/pathfinding.py`](src/graph_search_nlp/pathfinding.py) satisfy the **simple path invariant**:
 $$\pi = (v_0, v_1, \dots, v_k) \quad \text{such that} \quad \forall i \neq j,\; v_i \neq v_j \quad \text{and} \quad \forall i \in \{0, \dots, k-1\},\; (v_i, v_{i+1}) \in E$$
@@ -109,7 +109,7 @@ A valid **literal quote** is a simple path $\pi = (w_{s}, w_{s+1}, \dots, w_{s+k
 
 - **Task 6.3 (`print_expensive_path`)**: Replaces the cardinality objective $|\pi|$ in Fixed-Endpoint Simulated Annealing with the cumulative inverted-distance objective:
   $$\mathcal{J}_{\text{cost}}(\pi) = \sum_{i=0}^{|\pi|-2} D(\pi_i, \pi_{i+1})$$
-  Using endpoints `("wanted", "same")` with $T_0 = 300.0, \alpha = 0.995$, `simulated_annealing_cost_fixed_endpoints` simultaneously maximizes path length and selects low-frequency (high-$D$) transitions, reaching a total path cost of **1,132,655–1,142,656** across 460 nodes (**85.12th percentile** of all submissions).
+  Using endpoints `("wanted", "same")` with $T_0 = 300.0, \alpha = 0.995$, `simulated_annealing_cost_fixed_endpoints` simultaneously maximizes path length and selects low-frequency (high-$D$) transitions, reaching a total path cost of **1,132,655-1,142,656** across 460 nodes (**85.12th percentile** of all submissions).
 - **Task 6.4 (`print_expensive_quote`)**: Evaluates $\mathcal{J}_{\text{cost}}(\pi)$ across all prefix-pruned literal quotes between `("perhaps", "it")`, identifying the optimal literal quote cost of **64,229.0**.
 
 ![Task 6.3 Most Expensive Simple Path Output](docs/assets/t6_3_expensive_path_output.png)
@@ -144,18 +144,18 @@ $$f_{\text{avg}}(n) = (1 - w) \cdot g_{\text{avg}}(n) + w \cdot h_{\text{avg}}(n
 
 At each expansion step from $w_{t-1}$ to candidate neighbor $w_t \in N_G(w_{t-1})$, `calculate_ngram_cost` computes $c_{\mathrm{step}}$ via a 3-tier statistical backoff model:
 
-- **Tier 1 — Base Bigram Surprisal**:
+- **Tier 1: Base Bigram Surprisal**:
 
 $$c_2(w_{t-1}, w_t) = -\ln\!\left(\frac{C(w_{t-1}, w_t)}{C(w_{t-1})} + 10^{-10}\right)$$
 
-- **Tier 2 — Trigram Context Augmentation ($N = 3$)**:
+- **Tier 2: Trigram Context Augmentation ($N = 3$)**:
   If $C(w_{t-1}, w_t) > 0$, we inspect the 2-token history $(w_{t-2}, w_{t-1})$:
 
 $$c_3(w_{t-2}, w_{t-1}, w_t) = \begin{cases} -\ln\!\left(\dfrac{C(w_{t-2}, w_{t-1}, w_t)}{C(w_{t-2}, w_{t-1})} + 10^{-10}\right) & \text{if } C(w_{t-2}, w_{t-1}, w_t) > 0 \\[8pt] \lambda_{\mathrm{backoff}} = 2.0 & \text{otherwise (unseen trigram penalty)} \end{cases}$$
 
-  yielding $c_{\mathrm{step}} = c_2(w_{t-1}, w_t) + c_3(w_{t-2}, w_{t-1}, w_t)$. High-probability trigram continuations add near-zero incremental cost ($\approx 0.0$–$0.5$), whereas backing off to a bare bigram incurs $+2.0$.
+  yielding $c_{\mathrm{step}} = c_2(w_{t-1}, w_t) + c_3(w_{t-2}, w_{t-1}, w_t)$. High-probability trigram continuations add near-zero incremental cost ($\approx 0.0$-$0.5$), whereas backing off to a bare bigram incurs $+2.0$.
 
-- **Tier 3 — Non-Literal Graph Edge Fallback**:
+- **Tier 3: Non-Literal Graph Edge Fallback**:
   If $C(w_{t-1}, w_t) = 0$ (no directional bigram in the corpus) but $\{w_{t-1}, w_t\} \in E$ in the undirected transition graph, the transition is permitted as a "creative" topological bridge with a high fixed penalty:
 
 $$c_{\mathrm{step}}(w_{t-1}, w_t) = \lambda_{\mathrm{graph}} = 4.0$$
@@ -164,12 +164,12 @@ $$c_{\mathrm{step}}(w_{t-1}, w_t) = \lambda_{\mathrm{graph}} = 4.0$$
 
 Because $g_{\mathrm{avg}}(n)$ is measured in **cost per transition step**, the heuristic $h_{\mathrm{avg}}(n)$ must estimate the per-step cost from current token $n$ to target $w_{\mathrm{end}}$ on the exact same scale:
 
-- **Priority 1 — Direct Textual Bigram Lookahead**:
+- **Priority 1: Direct Textual Bigram Lookahead**:
   If the corpus contains the direct bigram $(n, w_{\mathrm{end}})$, i.e., $C(n, w_{\mathrm{end}}) > 0$:
 
 $$h_{\mathrm{avg}}(n) = -\ln\!\left(\frac{C(n, w_{\mathrm{end}})}{C(n)} + 10^{-10}\right)$$
 
-- **Priority 2 — Precomputed Reverse-BFS Hop-Distance Schedule**:
+- **Priority 2: Precomputed Reverse-BFS Hop-Distance Schedule**:
   Before search begins, `build_reverse_bfs_heuristic` executes a Reverse Breadth-First Search from $w_{\mathrm{end}}$ across $G$, computing the exact shortest hop distance $d_{\mathrm{BFS}}(n, w_{\mathrm{end}})$ for every node $n \in V$. When no direct bigram $(n, w_{\mathrm{end}})$ exists, $h_{\mathrm{avg}}(n)$ maps $d_{\mathrm{BFS}}(n, w_{\mathrm{end}})$ to a step-cost penalty:
 
 $$h_{\mathrm{avg}}(n) = \begin{cases} 0.0 & \text{if } d_{\mathrm{BFS}}(n, w_{\mathrm{end}}) = 0 \\ 3.0 & \text{if } d_{\mathrm{BFS}}(n, w_{\mathrm{end}}) = 1 \\ 4.0 & \text{if } d_{\mathrm{BFS}}(n, w_{\mathrm{end}}) = 2 \\ +\infty \text{ (pruned)} & \text{if } d_{\mathrm{BFS}}(n, w_{\mathrm{end}}) > d_{\max} \end{cases}$$
@@ -188,9 +188,9 @@ $$h_{\mathrm{avg}}(n) = \begin{cases} 0.0 & \text{if } d_{\mathrm{BFS}}(n, w_{\m
 
 | Task ID | Task Description | Algorithmic Method | Achieved Metric / Output | Cohort Evaluation Benchmark |
 | :--- | :--- | :--- | :--- | :--- |
-| **T6.1** | **Longest Simple Path** (`print_long_path`) | Multi-Start Hub Seeding + Fixed-Endpoint Simulated Annealing (`2-opt`, `3-opt`, `insert`, `replace`) | **463–466 nodes** (`"kind"` $\to \dots \to$ `"ministry"`) | **74.79th Percentile** (Score: 4.0 / 5.0) |
+| **T6.1** | **Longest Simple Path** (`print_long_path`) | Multi-Start Hub Seeding + Fixed-Endpoint Simulated Annealing (`2-opt`, `3-opt`, `insert`, `replace`) | **463-466 nodes** (`"kind"` $\to \dots \to$ `"ministry"`) | **74.79th Percentile** (Score: 4.0 / 5.0) |
 | **T6.2** | **Longest Literal Quote** (`print_long_quote`) | Precomputed Valid-Span Extraction + $O(1)$ Prefix-Set Pruned DFS | **27 tokens** (*"perhaps that was less true ... but it"*) | **Global Optimum Obtainable** (Score: 5.0 / 5.0) |
-| **T6.3** | **Most Expensive Simple Path** (`print_expensive_path`) | Inverted-Distance Cost SA with Fixed Endpoints (`"wanted"` $\to$ `"same"`) | **Cost = 1,132,655 – 1,142,656** (460 nodes) | **85.12th Percentile** (Score: 5.0 / 5.0) |
+| **T6.3** | **Most Expensive Simple Path** (`print_expensive_path`) | Inverted-Distance Cost SA with Fixed Endpoints (`"wanted"` $\to$ `"same"`) | **Cost = 1,132,655-1,142,656** (460 nodes) | **85.12th Percentile** (Score: 5.0 / 5.0) |
 | **T6.4** | **Most Expensive Literal Quote** (`print_expensive_quote`) | Prefix-Set Pruned Exact DFS over Inverted Distance Matrix | **Cost = 64,229.0** (27 tokens) | **Global Optimum Obtainable** (Score: 5.0 / 5.0) |
 | **T6.5A** | **Constrained Sentence Completion** (`complete_sentence`) | Length-Normalised $A^*$ ($g_{\text{avg}} = G/T$, Trigram Backoff + Reverse-BFS Heuristic) | Coherent multi-word completions | **85.99th Pct Perplexity** · **77.07th Pct Variance** · **68.79th Pct Grammar** (8.28 / 10) |
 | **T6.5B** | **Prefix-Conditioned Sentence Generation** (`start_sentence`) | Length-Normalised $A^*$ with Suffix Anti-Repetition Filter | Coherent clause bridges | **98.99th Pct Grammar** · **76.35th Pct Variance** · **75.00th Pct Perplexity** (8.34 / 10) |
@@ -243,7 +243,7 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-### 1. Run Combinatorial Pathfinding & Literal Quote Extraction (Tasks 6.1–6.4)
+### 1. Run Combinatorial Pathfinding & Literal Quote Extraction (Tasks 6.1-6.4)
 
 Run on the built-in Orwellian sample corpus or point `--corpus` to any full text file (e.g., `1984.txt`):
 
