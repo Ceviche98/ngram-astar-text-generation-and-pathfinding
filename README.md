@@ -54,7 +54,7 @@ Given an input text corpus, the pipeline in [`src/graph_search_nlp/network.py`](
 
 1. **Lexical Tokenization (`tokenize_text`)**: Lowercases the character stream, groups contiguous alphabetic characters and word-internal apostrophes (`'`) into lexical tokens, and isolates sentence punctuation (`,` and `.`) as standalone structural tokens.
 2. **Vocabulary Pruning (`replace_rare_tokens`)**: Computes relative word frequencies over non-punctuation tokens $W_{\text{words}} = \{w \in \mathcal{D} : w \notin \{',', '.'\}\}$ and maps infrequent words below threshold $\tau_{\text{rare}} = 0.01$ to the sentinel `<RARE>`:
-   $$\text{RareSet} = \left\{ w \in V_{\text{words}} \;\middle|\; \frac{\text{count}(w)}{|W_{\text{words}}|} < \tau_{\text{rare}} \right\}$$
+   $$\text{RareSet} = \{ w \in V_{\text{words}} \mid \text{freq}(w) < \tau_{\text{rare}} \}, \quad \text{freq}(w) = \frac{\text{count}(w)}{|W_{\text{words}}|}$$
 3. **Directional Bigram Adjacency (`get_text_adjacencies`)**: Extracts consecutive non-identical token transitions $C(u, v) = \sum_{i=1}^{M-1} \mathbb{I}[w_i = u \land w_{i+1} = v \land u \neq v]$.
 4. **Topological Graph Construction (`build_unweighted_graph`)**: Forms the undirected simple graph $G = (V, E)$ where $\{u, v\} \in E \iff C(u,v) + C(v,u) > 0$.
 5. **Symmetrized Inverted Distance Matrix (`compute_distance_matrix`)**: Symmetrizes directional counts via $C_{\text{sym}}(u, v) = \frac{1}{2}\big(C(u, v) + C(v, u)\big)$ with $C_{\text{sym}}(u, u) = 0$, and transforms co-occurrence frequency into an **inverted metric cost** (`distance_mode="inverted"`):
