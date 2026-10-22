@@ -16,9 +16,22 @@
 
 When a natural language corpus $\mathcal{D} = (w_1, w_2, \dots, w_M)$ is projected onto a topological transition network $G = (V, E, W)$, classical graph pathfinding and statistical sequence generation become dual formulations of the same underlying state-space search problem:
 
-1. **Extremal Simple-Path Optimization (Combinatorial Graph Search)**: Finding the longest cycle-free path $\pi^* = \arg\max_{\pi \in \mathcal{P}_{\text{simple}}} |\pi|$ or the highest-cost simple path $\pi^* = \arg\max_{\pi \in \mathcal{P}_{\text{simple}}} \sum_{(u,v) \in \pi} D(u,v)$ in a general cyclic graph is **NP-hard** (reducible from the Hamiltonian Path problem). Exhaustive Depth-First Search explodes combinatorially on dense small-world word graphs ($|V| \approx 470$, $|E| \approx 15{,}000$). We solve both fixed-endpoint and multi-start variants in sub-minute runtime by seeding high-degree hub trajectories via fast greedy DFS and refining them through **Simulated Annealing (SA)** equipped with **2-opt**, **3-opt**, **common-neighbor splice (`insert`)**, **contraction (`remove`)**, and **bridge replacement (`replace`)** operators.
-2. **Contiguous Literal Quote Extraction (Prefix-Pruned Exact Search)**: Extracting the longest or highest-cost cycle-free path in $G$ that simultaneously occurs *verbatim* as a contiguous substring in $\mathcal{D}$ is solved **exactly** by precomputing an $O(1)$ hash-trie prefix lookup $\mathcal{T}_{\text{prefix}}$ over all valid corpus spans originating at $w_{\text{start}}$, pruning $99.9\%$ of non-literal graph branches during iterative DFS.
-3. **Constrained Statistical Text Generation (Length-Normalised $A^*$ Search)**: Standard additive $A^*$ search ($f(n) = G(n) + H(n)$) is fundamentally ill-suited for open-horizon text generation because every appended token adds a strictly positive negative log-likelihood $-\ln P(w_t \mid w_{<t}) > 0$, biasing the priority queue toward degenerate 1-token bridges. We formulate a **Length-Normalised $A^*$ Search** objective $f_{\text{avg}}(n) = (1 - w)\,g_{\text{avg}}(n) + w\,h_{\text{avg}}(n)$ that normalizes cumulative N-gram backoff surprisal by the generated horizon $T$, paired with a **hybrid bigram + Reverse-BFS hop-distance heuristic** on the exact same per-step cost scale.
+### 1. Extremal Simple-Path Optimization (Combinatorial Graph Search)
+Finding the longest cycle-free path or highest-cost simple path in a general cyclic graph is **NP-hard** (reducible from the Hamiltonian Path problem):
+
+$$\pi^* = \arg\max_{\pi \in \mathcal{P}_{\mathrm{simple}}} |\pi|, \qquad \pi^* = \arg\max_{\pi \in \mathcal{P}_{\mathrm{simple}}} \sum_{(u,v) \in \pi} D(u,v)$$
+
+Exhaustive Depth-First Search explodes combinatorially on dense small-world word graphs ($|V| \approx 470$, $|E| \approx 15{,}000$). We solve both fixed-endpoint and multi-start variants in sub-minute runtime by seeding high-degree hub trajectories via fast greedy DFS and refining them through **Simulated Annealing (SA)** equipped with **2-opt**, **3-opt**, **common-neighbor splice (`insert`)**, **contraction (`remove`)**, and **bridge replacement (`replace`)** operators.
+
+### 2. Contiguous Literal Quote Extraction (Prefix-Pruned Exact Search)
+Extracting the longest or highest-cost cycle-free path in $G$ that simultaneously occurs *verbatim* as a contiguous substring in $\mathcal{D}$ is solved **exactly** by precomputing an $O(1)$ hash-trie prefix lookup over all valid corpus spans originating at $w_{\mathrm{start}}$, pruning $99.9\%$ of non-literal graph branches during iterative DFS.
+
+### 3. Constrained Statistical Text Generation (Length-Normalised $A^*$ Search)
+Standard additive $A^*$ search ($f(n) = G(n) + H(n)$) is fundamentally ill-suited for open-horizon text generation because every appended token adds a strictly positive negative log-likelihood $-\ln P(w_t \mid w_{<t}) > 0$, biasing the priority queue toward degenerate 1-token bridges. We formulate a **Length-Normalised $A^*$ Search** objective:
+
+$$f_{\mathrm{avg}}(n) = (1 - w) \cdot g_{\mathrm{avg}}(n) + w \cdot h_{\mathrm{avg}}(n)$$
+
+that normalizes cumulative N-gram backoff surprisal by the generated horizon $T$, paired with a **hybrid bigram + Reverse-BFS hop-distance heuristic** on the exact same per-step cost scale.
 
 ```mermaid
 flowchart LR
@@ -127,36 +140,45 @@ and orders the priority queue by the convex combination of the average step cost
 
 $$f_{\text{avg}}(n) = (1 - w) \cdot g_{\text{avg}}(n) + w \cdot h_{\text{avg}}(n), \qquad w = 0.3$$
 
-### 4.3 Dynamic N-Gram Backoff Step Cost $c_{\text{step}}$
+### 4.3 Dynamic N-Gram Backoff Step Cost $c_{\mathrm{step}}$
 
-At each expansion step from $w_{t-1}$ to candidate neighbor $w_t \in N_G(w_{t-1})$, `calculate_ngram_cost` computes $c_{\text{step}}$ via a 3-tier statistical backoff model:
+At each expansion step from $w_{t-1}$ to candidate neighbor $w_t \in N_G(w_{t-1})$, `calculate_ngram_cost` computes $c_{\mathrm{step}}$ via a 3-tier statistical backoff model:
 
-1. **Tier 1 — Base Bigram Surprisal**:
-   $$c_2(w_{t-1}, w_t) = -\ln\!\left(\frac{C(w_{t-1}, w_t)}{C(w_{t-1})} + 10^{-10}\right)$$
-2. **Tier 2 — Trigram Context Augmentation ($N = 3$)**:
-   If $C(w_{t-1}, w_t) > 0$, we inspect the 2-token history $(w_{t-2}, w_{t-1})$:
-   $$c_3(w_{t-2}, w_{t-1}, w_t) = \begin{cases} -\ln\!\left(\dfrac{C(w_{t-2}, w_{t-1}, w_t)}{C(w_{t-2}, w_{t-1})} + 10^{-10}\right) & \text{if } C(w_{t-2}, w_{t-1}, w_t) > 0 \\[8pt] \lambda_{\text{backoff}} = 2.0 & \text{otherwise (unseen trigram penalty)} \end{cases}$$
-   yielding $c_{\text{step}} = c_2(w_{t-1}, w_t) + c_3(w_{t-2}, w_{t-1}, w_t)$. High-probability trigram continuations add near-zero incremental cost ($\approx 0.0$–$0.5$), whereas backing off to a bare bigram incurs $+2.0$.
-3. **Tier 3 — Non-Literal Graph Edge Fallback**:
-   If $C(w_{t-1}, w_t) = 0$ (no directional bigram in the corpus) but $\{w_{t-1}, w_t\} \in E$ in the undirected transition graph, the transition is permitted as a "creative" topological bridge with a high fixed penalty:
-   $$c_{\text{step}}(w_{t-1}, w_t) = \lambda_{\text{graph}} = 4.0$$
+- **Tier 1 — Base Bigram Surprisal**:
 
-### 4.4 Hybrid Lookahead Heuristic $h_{\text{avg}}(n)$ (Direct Bigram + Reverse-BFS)
+$$c_2(w_{t-1}, w_t) = -\ln\!\left(\frac{C(w_{t-1}, w_t)}{C(w_{t-1})} + 10^{-10}\right)$$
 
-Because $g_{\text{avg}}(n)$ is measured in **cost per transition step**, the heuristic $h_{\text{avg}}(n)$ must estimate the per-step cost from current token $n$ to target $w_{\text{end}}$ on the exact same scale:
+- **Tier 2 — Trigram Context Augmentation ($N = 3$)**:
+  If $C(w_{t-1}, w_t) > 0$, we inspect the 2-token history $(w_{t-2}, w_{t-1})$:
 
-1. **Priority 1 — Direct Textual Bigram Lookahead**:
-   If the corpus contains the direct bigram $(n, w_{\text{end}})$, i.e., $C(n, w_{\text{end}}) > 0$:
-   $$h_{\text{avg}}(n) = -\ln\!\left(\frac{C(n, w_{\text{end}})}{C(n)} + 10^{-10}\right)$$
-2. **Priority 2 — Precomputed Reverse-BFS Hop-Distance Schedule**:
-   Before search begins, `build_reverse_bfs_heuristic` executes a Reverse Breadth-First Search from $w_{\text{end}}$ across $G$, computing the exact shortest hop distance $d_{\text{BFS}}(n, w_{\text{end}})$ for every node $n \in V$. When no direct bigram $(n, w_{\text{end}})$ exists, $h_{\text{avg}}(n)$ maps $d_{\text{BFS}}(n, w_{\text{end}})$ to a step-cost penalty:
-   $$h_{\text{avg}}(n) = \begin{cases} 0.0 & \text{if } d_{\text{BFS}}(n, w_{\text{end}}) = 0 \\ 3.0 & \text{if } d_{\text{BFS}}(n, w_{\text{end}}) = 1 \\ 4.0 & \text{if } d_{\text{BFS}}(n, w_{\text{end}}) = 2 \\ +\infty \text{ (pruned)} & \text{if } d_{\text{BFS}}(n, w_{\text{end}}) > d_{\max} \end{cases}$$
+$$c_3(w_{t-2}, w_{t-1}, w_t) = \begin{cases} -\ln\!\left(\dfrac{C(w_{t-2}, w_{t-1}, w_t)}{C(w_{t-2}, w_{t-1})} + 10^{-10}\right) & \text{if } C(w_{t-2}, w_{t-1}, w_t) > 0 \\[8pt] \lambda_{\mathrm{backoff}} = 2.0 & \text{otherwise (unseen trigram penalty)} \end{cases}$$
+
+  yielding $c_{\mathrm{step}} = c_2(w_{t-1}, w_t) + c_3(w_{t-2}, w_{t-1}, w_t)$. High-probability trigram continuations add near-zero incremental cost ($\approx 0.0$–$0.5$), whereas backing off to a bare bigram incurs $+2.0$.
+
+- **Tier 3 — Non-Literal Graph Edge Fallback**:
+  If $C(w_{t-1}, w_t) = 0$ (no directional bigram in the corpus) but $\{w_{t-1}, w_t\} \in E$ in the undirected transition graph, the transition is permitted as a "creative" topological bridge with a high fixed penalty:
+
+$$c_{\mathrm{step}}(w_{t-1}, w_t) = \lambda_{\mathrm{graph}} = 4.0$$
+
+### 4.4 Hybrid Lookahead Heuristic $h_{\mathrm{avg}}(n)$ (Direct Bigram + Reverse-BFS)
+
+Because $g_{\mathrm{avg}}(n)$ is measured in **cost per transition step**, the heuristic $h_{\mathrm{avg}}(n)$ must estimate the per-step cost from current token $n$ to target $w_{\mathrm{end}}$ on the exact same scale:
+
+- **Priority 1 — Direct Textual Bigram Lookahead**:
+  If the corpus contains the direct bigram $(n, w_{\mathrm{end}})$, i.e., $C(n, w_{\mathrm{end}}) > 0$:
+
+$$h_{\mathrm{avg}}(n) = -\ln\!\left(\frac{C(n, w_{\mathrm{end}})}{C(n)} + 10^{-10}\right)$$
+
+- **Priority 2 — Precomputed Reverse-BFS Hop-Distance Schedule**:
+  Before search begins, `build_reverse_bfs_heuristic` executes a Reverse Breadth-First Search from $w_{\mathrm{end}}$ across $G$, computing the exact shortest hop distance $d_{\mathrm{BFS}}(n, w_{\mathrm{end}})$ for every node $n \in V$. When no direct bigram $(n, w_{\mathrm{end}})$ exists, $h_{\mathrm{avg}}(n)$ maps $d_{\mathrm{BFS}}(n, w_{\mathrm{end}})$ to a step-cost penalty:
+
+$$h_{\mathrm{avg}}(n) = \begin{cases} 0.0 & \text{if } d_{\mathrm{BFS}}(n, w_{\mathrm{end}}) = 0 \\ 3.0 & \text{if } d_{\mathrm{BFS}}(n, w_{\mathrm{end}}) = 1 \\ 4.0 & \text{if } d_{\mathrm{BFS}}(n, w_{\mathrm{end}}) = 2 \\ +\infty \text{ (pruned)} & \text{if } d_{\mathrm{BFS}}(n, w_{\mathrm{end}}) > d_{\max} \end{cases}$$
 
 ### 4.5 Full-Sentence Anti-Repetition & Dominance Pruning
 
-- **Dominance Pruning (`min_avg_cost_to_node`)**: A candidate partial path reaching node $v$ with average cost $g_{\text{avg}}$ is pruned if a strictly cheaper average path to $v$ has already been expanded ($g_{\text{avg}} \ge \text{min\_avg\_cost}[v]$).
-- **Minimum Content Horizon (`min_path_len_for_end = 2`)**: Reaching $w_{\text{end}}$ at $T < 2$ is rejected so `<CONTENT>` is always expanded into at least one substantive token.
-- **Full-Sentence Disjointness (`avoid_suffix_repeats=True`)**: In addition to preventing cycles along the active prefix and generated path ($w_t \notin \text{path}$), `complete_sentence` and `start_sentence` pass the trailing prompt suffix tokens (`forbidden_tokens = set(suffix[1:])`) into `run_length_normalised_astar`, guaranteeing zero repeated tokens across the entire reconstructed sentence.
+- **Dominance Pruning (`min_avg_cost_to_node`)**: A candidate partial path reaching node $v$ with average cost $g_{\mathrm{avg}}$ is pruned if an equal or cheaper average path to $v$ has already been expanded: $g_{\mathrm{avg}}(v) \ge g^*_{\min}(v)$ (where $g^*_{\min}(v)$ tracks `min_avg_cost[v]`).
+- **Minimum Content Horizon (`min_path_len_for_end = 2`)**: Reaching $w_{\mathrm{end}}$ at $T < 2$ is rejected so `<CONTENT>` is always expanded into at least one substantive token.
+- **Full-Sentence Disjointness (`avoid_suffix_repeats=True`)**: In addition to preventing cycles along the active prefix and generated path ($w_t \notin \mathrm{path}$), `complete_sentence` and `start_sentence` pass the trailing prompt suffix tokens (`forbidden_tokens = set(suffix[1:])`) into `run_length_normalised_astar`, guaranteeing zero repeated tokens across the entire reconstructed sentence.
 
 ---
 
